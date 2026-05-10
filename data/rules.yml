@@ -1,0 +1,119 @@
+version: "3.1"
+
+# Важно: правила с active_loop: interview_form должны идти РАНЬШЕ общих
+# goodbye / out_of_scope — иначе форма не снимется и сработает action_execution_rejected + fallback.
+
+rules:
+
+  - rule: Приветствие
+    steps:
+      - intent: greet
+      - action: action_greet_user
+
+  - rule: Название роли до старта анкеты — подсказка
+    condition:
+      - slot_was_set:
+          - screening_form_started: false
+    steps:
+      - intent: inform
+        entities:
+          - job_role
+      - action: utter_suggest_start_interview
+
+  - rule: Прервать форму — прощание
+    condition:
+      - active_loop: interview_form
+    steps:
+      - intent: goodbye
+      - action: action_abort_interview_goodbye
+
+  - rule: Прервать форму — отмена интервью
+    condition:
+      - active_loop: interview_form
+    steps:
+      - intent: cancel_interview
+      - action: action_abort_interview_cancel
+
+  - rule: Форма — привет / роли / повторный старт (остаёмся в анкете)
+    condition:
+      - active_loop: interview_form
+    steps:
+      - intent: greet
+      - action: action_clarify_during_interview
+
+  - rule: Форма — список ролей во время анкеты
+    condition:
+      - active_loop: interview_form
+    steps:
+      - intent: ask_roles
+      - action: action_clarify_during_interview
+
+  - rule: Форма — снова старт интервью во время анкеты
+    condition:
+      - active_loop: interview_form
+    steps:
+      - intent: start_interview
+      - action: action_clarify_during_interview
+
+  - rule: Форма — вне области (остаёмся в цикле, одна подсказка)
+    condition:
+      - active_loop: interview_form
+    steps:
+      - intent: out_of_scope
+      - action: action_clarify_during_interview
+
+  # Явное продолжение формы по inform (иначе при только RulePolicy без TED
+  # иногда не выбирается interview_form → срабатывает core_fallback / utter_default).
+  - rule: Форма — ответ inform, продолжить опрос
+    condition:
+      - active_loop: interview_form
+    steps:
+      - intent: inform
+      - action: interview_form
+      - active_loop: interview_form
+
+  - rule: Прощание
+    steps:
+      - intent: goodbye
+      - action: utter_goodbye
+
+  - rule: Вне области
+    steps:
+      - intent: out_of_scope
+      - action: utter_out_of_scope
+
+  # Иначе срабатывает utter_default и одновременно переспрос формы — два сообщения подряд.
+  - rule: NLU fallback во время формы — только переспрос текущего поля
+    condition:
+      - active_loop: interview_form
+    steps:
+      - intent: nlu_fallback
+      - action: interview_form
+      - active_loop: interview_form
+
+  - rule: NLU fallback — одна подсказка
+    steps:
+      - intent: nlu_fallback
+      - action: utter_default
+
+  - rule: Список ролей
+    steps:
+      - intent: ask_roles
+      - action: utter_list_roles
+
+  - rule: Старт интервью — форма
+    steps:
+      - intent: start_interview
+      - action: action_mark_screening_started
+      - action: interview_form
+      - active_loop: interview_form
+
+  - rule: Форма завершена — оценка
+    condition:
+      - active_loop: interview_form
+    steps:
+      - action: interview_form
+      - active_loop: null
+      - slot_was_set:
+          - requested_slot: null
+      - action: action_evaluate_candidate

@@ -1,0 +1,179 @@
+version: "3.1"
+
+intents:
+  - greet
+  - goodbye
+  - cancel_interview
+  - out_of_scope
+  - start_interview
+  - ask_roles
+  - inform
+  - nlu_fallback
+
+entities:
+  - job_role
+
+slots:
+  # True пока идёт или только что шла анкета — чтобы не путать «Data Scientist» до старта с ответом в форме.
+  screening_form_started:
+    type: bool
+    influence_conversation: true
+    initial_value: false
+    mappings:
+      - type: custom
+
+  # После первого полного приветствия — короткий ответ на повторные greet / «рш» (раскладка)
+  intro_done:
+    type: bool
+    influence_conversation: true
+    initial_value: false
+    mappings:
+      - type: custom
+
+  target_role:
+    type: text
+    influence_conversation: true
+    mappings:
+      # Сначала полный текст (иначе DIET может выдать job_role="scientist" по span «scientist»).
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - nlu_fallback
+        conditions:
+          - active_loop: interview_form
+            requested_slot: target_role
+      - type: from_entity
+        entity: job_role
+
+  years_experience:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: interview_form
+            requested_slot: years_experience
+
+  skills_summary:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: interview_form
+            requested_slot: skills_summary
+
+  expectations:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: interview_form
+            requested_slot: expectations
+
+responses:
+  utter_greet_full:
+    - text: |
+        Здравствуйте! Я HR-ассистент по набору в ML-команду.
+        Могу провести короткое интервью: роль, опыт, навыки, ожидания — и дам ориентир по одной из пяти ролей проекта.
+
+        Напишите «хочу пройти интервью» или спросите «какие роли есть».
+
+  utter_goodbye:
+    - text: "Спасибо за время. Если появятся вопросы по вакансиям — напишите сюда."
+
+  utter_out_of_scope:
+    - text: "Здесь только скрининг на роли ML-команды. Напишите «хочу пройти интервью» или «какие роли есть» — по делу отвечу."
+
+  # Ответ при низкой уверенности NLU (см. RulePolicy core_fallback → action_default_fallback)
+  utter_default:
+    - text: "Не разобрал запрос. Попробуйте: «хочу пройти интервью» или «какие роли есть»."
+
+  utter_suggest_start_interview:
+    - text: "Вы назвали роль из списка. Чтобы пройти скрининг, напишите «хочу пройти интервью» (или «какие роли есть»)."
+
+  utter_interview_cancelled:
+    - text: "Опрос остановлен. Заново: «хочу пройти интервью» или /restart в rasa shell."
+
+  utter_greet_short:
+    - text: "Здравствуйте ещё раз. Дальше: «хочу пройти интервью» или «какие роли есть»."
+
+  utter_list_roles:
+    - text: |
+        Открыты роли в ML-проекте:
+        • Project Manager — команда и бизнес
+        • Data Analyst — данные и требования
+        • Data Engineer — пайплайны данных
+        • Data Scientist — ML-модели
+        • MLOps Engineer — прод и инфраструктура моделей
+
+  utter_ask_target_role:
+    - text: |
+        Какая роль вам ближе: PM, DA, DE, DS или MLOps?
+        Если сложно выбрать — напишите «не знаю»: после вопросов про опыт и навыки попробуем сопоставить вас с одной ролью по тексту (эвристика).
+        Прервать: «отмена интервью».
+
+  utter_ask_years_experience:
+    - text: |
+        Сколько лет релевантного опыта по этой роли? Допустим примерный ответ.
+        Если опыта нет — напишите «нет опыта по роли». Прервать: «отмена интервью».
+
+  utter_ask_skills_summary:
+    - text: |
+        Кратко опишите стек и задачи (инструменты, типы работ).
+        Если нечего перечислить — «нет навыков». Прервать: «отмена интервью».
+
+  utter_ask_expectations:
+    - text: |
+        Формат работы и зарплата (кратко): офис / удалёнка / гибрид, вилка или «обсуждаемо».
+        Прервать: «отмена интервью».
+
+forms:
+  interview_form:
+    required_slots:
+      - target_role
+      - years_experience
+      - skills_summary
+      - expectations
+
+actions:
+  - validate_interview_form
+  - action_greet_user
+  - action_mark_screening_started
+  - action_clarify_during_interview
+  - action_abort_interview_cancel
+  - action_evaluate_candidate
+  - action_abort_interview_goodbye
+
+session_config:
+  session_expiration_time: 60
+  carry_over_slots_to_new_session: false
