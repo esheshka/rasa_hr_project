@@ -108,6 +108,60 @@ rules:
       - action: interview_form
       - active_loop: interview_form
 
+  - rule: Квиз — прервать прощание
+    condition:
+      - active_loop: quiz_form
+    steps:
+      - intent: goodbye
+      - action: action_abort_interview_goodbye
+
+  - rule: Квиз — отмена интервью
+    condition:
+      - active_loop: quiz_form
+    steps:
+      - intent: cancel_interview
+      - action: action_abort_interview_cancel
+
+  - rule: Квиз — out_of_scope
+    condition:
+      - active_loop: quiz_form
+    steps:
+      - intent: out_of_scope
+      - action: action_clarify_during_interview
+
+  - rule: Квиз — greet во время вопросов
+    condition:
+      - active_loop: quiz_form
+    steps:
+      - intent: greet
+      - action: action_clarify_during_interview
+
+  - rule: Квиз — ответ inform
+    condition:
+      - active_loop: quiz_form
+    steps:
+      - intent: inform
+      - action: quiz_form
+      - active_loop: quiz_form
+
+  - rule: Квиз — NLU fallback
+    condition:
+      - active_loop: quiz_form
+    steps:
+      - intent: nlu_fallback
+      - action: quiz_form
+      - active_loop: quiz_form
+
+  - rule: Квиз завершён — финальная оценка
+    condition:
+      - active_loop: quiz_form
+    steps:
+      - action: quiz_form
+      - active_loop: null
+      - slot_was_set:
+          - requested_slot: null
+      - action: action_evaluate_quiz
+
   - rule: Форма завершена — оценка
     condition:
       - active_loop: interview_form

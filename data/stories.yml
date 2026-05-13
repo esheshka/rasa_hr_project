@@ -13,3 +13,10 @@ stories:
       - active_loop: interview_form
       - intent: inform
       - action: interview_form
+
+  - story: Квиз принимает inform
+    steps:
+      - action: quiz_form
+      - active_loop: quiz_form
+      - intent: inform
+      - action: quiz_form

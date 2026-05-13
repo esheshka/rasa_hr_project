@@ -100,6 +100,97 @@ slots:
           - active_loop: interview_form
             requested_slot: expectations
 
+  quiz_role:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: custom
+
+  quiz_q1_answer:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: quiz_form
+            requested_slot: quiz_q1_answer
+
+  quiz_q2_answer:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: quiz_form
+            requested_slot: quiz_q2_answer
+
+  quiz_q3_answer:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: quiz_form
+            requested_slot: quiz_q3_answer
+
+  quiz_q4_answer:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: quiz_form
+            requested_slot: quiz_q4_answer
+
+  quiz_q5_answer:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: quiz_form
+            requested_slot: quiz_q5_answer
+
 responses:
   utter_greet_full:
     - text: |
@@ -165,6 +256,14 @@ forms:
       - skills_summary
       - expectations
 
+  quiz_form:
+    required_slots:
+      - quiz_q1_answer
+      - quiz_q2_answer
+      - quiz_q3_answer
+      - quiz_q4_answer
+      - quiz_q5_answer
+
 actions:
   - validate_interview_form
   - action_greet_user
@@ -173,6 +272,13 @@ actions:
   - action_abort_interview_cancel
   - action_evaluate_candidate
   - action_abort_interview_goodbye
+  - validate_quiz_form
+  - action_ask_quiz_q1_answer
+  - action_ask_quiz_q2_answer
+  - action_ask_quiz_q3_answer
+  - action_ask_quiz_q4_answer
+  - action_ask_quiz_q5_answer
+  - action_evaluate_quiz
 
 session_config:
   session_expiration_time: 60
