@@ -1,7 +1,6 @@
 import re
-from typing import Dict, List, Optional
 
-QUIZ_QUESTIONS: Dict[str, List[Dict]] = {
+QUIZ_QUESTIONS = {
     "pm": [
         {
             "text": (
@@ -290,6 +289,6 @@ QUIZ_QUESTIONS: Dict[str, List[Dict]] = {
 }
 
 
-def extract_answer_choice(text: str) -> Optional[str]:
+def extract_answer_choice(text):
     m = re.search(r"\b([1-4])\b", text)
     return m.group(1) if m else None

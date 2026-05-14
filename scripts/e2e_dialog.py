@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-from __future__ import annotations
-
 import json
 import sys
 import urllib.error
@@ -10,7 +7,7 @@ BASE = "http://localhost:5006/webhooks/rest/webhook"
 ACTIONS_HEALTH = "http://localhost:5055/health"
 
 
-def send(sender: str, message: str) -> list[dict]:
+def send(sender, message):
     payload = json.dumps({"sender": sender, "message": message}).encode("utf-8")
     req = urllib.request.Request(
         BASE,
@@ -22,14 +19,14 @@ def send(sender: str, message: str) -> list[dict]:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def last_text(msgs: list[dict]) -> str:
+def last_text(msgs):
     texts = [m.get("text") or "" for m in msgs if m.get("text")]
     return "\n".join(texts).strip()
 
 
-def run_case(name: str, sender: str, steps: list[str], check) -> tuple[bool, str]:
+def run_case(name, sender, steps, check):
     try:
-        acc: list[tuple[str, list[dict]]] = []
+        acc = []
         for m in steps:
             out = send(sender, m)
             acc.append((m, out))
@@ -41,14 +38,14 @@ def run_case(name: str, sender: str, steps: list[str], check) -> tuple[bool, str
         return False, f"{name}: {type(e).__name__}: {e}"
 
 
-def main() -> int:
+def main():
     try:
         urllib.request.urlopen(ACTIONS_HEALTH, timeout=2)
     except Exception:
         print("Пропуск: action server недоступен на :5055 (curl health). Запустите rasa run actions.")
         return 2
 
-    results: list[tuple[bool, str]] = []
+    results = []
 
     def check_hi(acc):
         joined = "\n".join(last_text(o) for _, o in acc)
@@ -57,7 +54,6 @@ def main() -> int:
             return False, "зацикливание out_of_scope"
         if "hr-ассистент" not in j and "здравствуйте" not in j:
             return False, f"нет приветствия: {joined[:200]!r}"
-        # Первый turn — полное приветствие; второй greet — короткий (один блок без двойного блока про интервью)
         if j.count("могу провести короткое интервью") > 1:
             return False, "дублирование полного приветствия"
         return True, "привет + hi"
@@ -242,10 +238,7 @@ def main() -> int:
         if not t:
             return False, "пустой ответ"
         tl = t.lower()
-        ok = (
-                     "шаг" in tl
-                     and "роль" in tl
-             ) or "прервать" in tl
+        ok = ("шаг" in tl and "роль" in tl) or "прервать" in tl
         if not ok:
             return False, f"ожидали подсказку внутри формы, получили: {t[:300]}"
         return True, "остались в форме"

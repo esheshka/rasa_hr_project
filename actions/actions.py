@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-from typing import Any, Dict, List, Text
 
 import yaml
 from rasa_sdk import Action, Tracker
@@ -14,7 +13,7 @@ from .screening_criteria import QUIZ_QUESTIONS, extract_answer_choice
 logger = logging.getLogger(__name__)
 
 
-def _load_screening_config() -> Dict[str, Any]:
+def _load_screening_config():
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     config_path = os.path.join(base, "config.yml")
     try:
@@ -27,14 +26,14 @@ def _load_screening_config() -> Dict[str, Any]:
 
 
 _SCREENING_CFG = _load_screening_config()
-MIN_CORRECT_ANSWERS: int = int(_SCREENING_CFG.get("min_correct_answers", 3))
-MIN_YEARS_EXPERIENCE: float = float(_SCREENING_CFG.get("min_years_experience", 0))
+MIN_CORRECT_ANSWERS = int(_SCREENING_CFG.get("min_correct_answers", 3))
+MIN_YEARS_EXPERIENCE = float(_SCREENING_CFG.get("min_years_experience", 0))
 
 SKILLS_STUB_CANONICAL = "нет релевантных навыков"
 YEARS_STUB_CANONICAL = "нет опыта по роли"
 
 
-def _format_years_ru(years: float) -> str:
+def _format_years_ru(years):
     if years <= 0:
         return "не удалось оценить по ответу"
     if years < 1:
@@ -53,15 +52,10 @@ def _format_years_ru(years: float) -> str:
 
 
 class ActionGreetUser(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_greet_user"
 
-    def run(
-            self,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> List[Any]:
+    def run(self, dispatcher, tracker, domain):
         text = (tracker.latest_message.get("text") or "").strip()
         if not text:
             dispatcher.utter_message(
@@ -76,19 +70,14 @@ class ActionGreetUser(Action):
 
 
 class ActionMarkScreeningStarted(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_mark_screening_started"
 
-    def run(
-            self,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> List[Any]:
+    def run(self, dispatcher, tracker, domain):
         return [SlotSet("screening_form_started", True)]
 
 
-ROLE_TITLES_RU: Dict[str, str] = {
+ROLE_TITLES_RU = {
     "pm": "Project Manager",
     "da": "Data Analyst",
     "de": "Data Engineer",
@@ -115,7 +104,7 @@ _UNSURE_ROLE_PHRASES = (
     "определите роль по навыкам",
 )
 
-ROLE_KEYWORDS: Dict[str, List[str]] = {
+ROLE_KEYWORDS = {
     "pm": [
         "проект",
         "roadmap",
@@ -200,7 +189,7 @@ ROLE_KEYWORDS: Dict[str, List[str]] = {
 }
 
 
-def _infer_role_from_free_text(raw: str) -> str | None:
+def _infer_role_from_free_text(raw):
     if not raw:
         return None
     t = raw.strip().lower().replace("ё", "е")
@@ -230,7 +219,7 @@ def _infer_role_from_free_text(raw: str) -> str | None:
     return None
 
 
-def _normalize_role(raw: str | None) -> str | None:
+def _normalize_role(raw):
     if not raw:
         return None
     v = raw.strip().lower().replace("ё", "е")
@@ -254,7 +243,7 @@ def _normalize_role(raw: str | None) -> str | None:
     return aliases.get(v) or _infer_role_from_free_text(v)
 
 
-def _parse_years(text: str | None) -> float:
+def _parse_years(text):
     if not text:
         return 0.0
     t = text.lower().replace("ё", "е")
@@ -273,7 +262,6 @@ def _parse_years(text: str | None) -> float:
         return float(m.group(1).replace(",", "."))
     if "полгода" in t or "пол года" in t:
         return 0.5
-    # родительный падеж («около трёх лет» → после ё→е: «трех»)
     spoken_gen = [
         ("десяти", 10.0),
         ("девяти", 9.0),
@@ -308,7 +296,7 @@ def _parse_years(text: str | None) -> float:
     return 0.0
 
 
-def _is_years_stub_phrase(t_lower: str) -> bool:
+def _is_years_stub_phrase(t_lower):
     t = t_lower.lower().replace("ё", "е")
     if re.search(r"(?<![\d.,])0\s*лет\b", t):
         return True
@@ -330,7 +318,7 @@ def _is_years_stub_phrase(t_lower: str) -> bool:
     return any(p in t for p in phrases)
 
 
-def _is_skills_stub_phrase(t_lower: str) -> bool:
+def _is_skills_stub_phrase(t_lower):
     return any(
         x in t_lower
         for x in (
@@ -343,7 +331,7 @@ def _is_skills_stub_phrase(t_lower: str) -> bool:
     )
 
 
-def _years_answer_is_nonsense(raw: str) -> bool:
+def _years_answer_is_nonsense(raw):
     tl = raw.lower().replace("ё", "е")
     if "анекдот" in tl or "чилл" in tl or "чили" in tl:
         return True
@@ -352,7 +340,7 @@ def _years_answer_is_nonsense(raw: str) -> bool:
     return False
 
 
-def _skills_answer_is_nonsense(raw: str) -> bool:
+def _skills_answer_is_nonsense(raw):
     tl = raw.lower().replace("ё", "е")
     if _is_skills_stub_phrase(tl):
         return False
@@ -363,7 +351,7 @@ def _skills_answer_is_nonsense(raw: str) -> bool:
     return False
 
 
-def _looks_like_compensation_not_skills(tl: str) -> bool:
+def _looks_like_compensation_not_skills(tl):
     if tl.strip() in ("обсуждаемо", "обсуждаем", "зарплата обсуждаемо", "не важно", "без разницы"):
         return True
     if "зарплат" in tl and not any(x in tl for x in ("python", "sql", "модел", "ml", "data")):
@@ -371,7 +359,7 @@ def _looks_like_compensation_not_skills(tl: str) -> bool:
     return False
 
 
-def _years_phrase_in_skills_step(tl: str) -> bool:
+def _years_phrase_in_skills_step(tl):
     if _is_years_stub_phrase(tl):
         return True
     if "нет опыта" in tl and "навык" not in tl and "стек" not in tl and "python" not in tl:
@@ -379,34 +367,26 @@ def _years_phrase_in_skills_step(tl: str) -> bool:
     return False
 
 
-def _keyword_hits(role: str, skills: str) -> int:
-    if role not in ROLE_KEYWORDS:
-        return 0
-    s = skills.lower()
-    return sum(1 for kw in ROLE_KEYWORDS[role] if kw in s)
-
-
-def _infer_best_role_from_skills(skills: str) -> tuple[str | None, Dict[str, int]]:
+def _infer_best_role_from_skills(skills):
     if not skills.strip():
-        return None, {}
-    hits = {r: _keyword_hits(r, skills) for r in ROLE_KEYWORDS}
+        return None
+    s = skills.lower()
+    hits = {r: sum(1 for kw in kws if kw in s) for r, kws in ROLE_KEYWORDS.items()}
     best_v = max(hits.values()) if hits else 0
     if best_v == 0:
-        return None, hits
+        return None
     winners = [r for r, v in hits.items() if v == best_v]
-    if len(winners) != 1:
-        return None, hits
-    return winners[0], hits
+    return winners[0] if len(winners) == 1 else None
 
 
-INTERVIEW_SLOTS: tuple[str, ...] = (
+INTERVIEW_SLOTS = (
     "target_role",
     "years_experience",
     "skills_summary",
     "expectations",
 )
 
-QUIZ_SLOTS: tuple[str, ...] = (
+QUIZ_SLOTS = (
     "quiz_role",
     "quiz_q1_answer",
     "quiz_q2_answer",
@@ -424,8 +404,8 @@ CANCEL_TEXT_RE = re.compile(
 )
 
 
-def _reset_interview_slots() -> List[Any]:
-    events: List[Any] = [
+def _reset_interview_slots():
+    events = [
         ActiveLoop(None),
         SlotSet("screening_form_started", False),
         SlotSet("intro_done", False),
@@ -438,31 +418,19 @@ def _reset_interview_slots() -> List[Any]:
 
 
 class ActionAbortInterviewGoodbye(Action):
-    """Снимает форму и прощается."""
-
-    def name(self) -> Text:
+    def name(self):
         return "action_abort_interview_goodbye"
 
-    def run(
-            self,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> List[Dict[Text, Any]]:
+    def run(self, dispatcher, tracker, domain):
         dispatcher.utter_message(response="utter_goodbye")
         return _reset_interview_slots()
 
 
 class ActionAbortInterviewCancel(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_abort_interview_cancel"
 
-    def run(
-            self,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> List[Dict[Text, Any]]:
+    def run(self, dispatcher, tracker, domain):
         text = (tracker.latest_message.get("text") or "").strip()
         if not CANCEL_TEXT_RE.search(text):
             return ActionClarifyDuringInterview().run(dispatcher, tracker, domain)
@@ -471,15 +439,10 @@ class ActionAbortInterviewCancel(Action):
 
 
 class ActionClarifyDuringInterview(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_clarify_during_interview"
 
-    def run(
-            self,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> List[Dict[Text, Any]]:
+    def run(self, dispatcher, tracker, domain):
         rs = tracker.get_slot("requested_slot") or ""
         if rs and rs.startswith("quiz_q"):
             q_num = rs.replace("quiz_q", "").replace("_answer", "")
@@ -514,16 +477,10 @@ class ActionClarifyDuringInterview(Action):
 
 
 class ValidateInterviewForm(FormValidationAction):
-    def name(self) -> Text:
+    def name(self):
         return "validate_interview_form"
 
-    def validate_target_role(
-            self,
-            slot_value: Any,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> Dict[Text, Any]:
+    def validate_target_role(self, slot_value, dispatcher, tracker, domain):
         if slot_value is None:
             return {}
         role = _normalize_role(str(slot_value))
@@ -531,13 +488,7 @@ class ValidateInterviewForm(FormValidationAction):
             return {"target_role": role}
         return {"target_role": None}
 
-    def validate_years_experience(
-            self,
-            slot_value: Any,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> Dict[Text, Any]:
+    def validate_years_experience(self, slot_value, dispatcher, tracker, domain):
         if slot_value is None:
             return {}
         raw = str(slot_value).strip()
@@ -552,13 +503,7 @@ class ValidateInterviewForm(FormValidationAction):
             return {"years_experience": None}
         return {"years_experience": raw}
 
-    def validate_skills_summary(
-            self,
-            slot_value: Any,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> Dict[Text, Any]:
+    def validate_skills_summary(self, slot_value, dispatcher, tracker, domain):
         if slot_value is None:
             return {}
         raw = str(slot_value).strip()
@@ -573,13 +518,7 @@ class ValidateInterviewForm(FormValidationAction):
             return {"skills_summary": None}
         return {"skills_summary": raw}
 
-    def validate_expectations(
-            self,
-            slot_value: Any,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> Dict[Text, Any]:
+    def validate_expectations(self, slot_value, dispatcher, tracker, domain):
         if slot_value is None:
             return {}
         raw = str(slot_value).strip()
@@ -594,25 +533,18 @@ class ValidateInterviewForm(FormValidationAction):
 
 
 class ActionEvaluateCandidate(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_evaluate_candidate"
 
-    def run(
-            self,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> List[Dict[Text, Any]]:
+    def run(self, dispatcher, tracker, domain):
         raw_role = tracker.get_slot("target_role")
         years_text = tracker.get_slot("years_experience") or ""
         skills = tracker.get_slot("skills_summary") or ""
 
         claimed = _normalize_role(str(raw_role)) if raw_role is not None else None
-        effective_role: str | None = None
 
         if claimed == ROLE_UNSPECIFIED:
-            inferred, _ = _infer_best_role_from_skills(skills)
-            effective_role = inferred
+            effective_role = _infer_best_role_from_skills(skills)
         else:
             effective_role = claimed
 
@@ -642,7 +574,7 @@ class ActionEvaluateCandidate(Action):
             )
         )
 
-        events: List[Any] = [SlotSet(s, None) for s in INTERVIEW_SLOTS]
+        events = [SlotSet(s, None) for s in INTERVIEW_SLOTS]
         events += [
             SlotSet("screening_form_started", False),
             SlotSet("quiz_role", effective_role),
@@ -657,7 +589,7 @@ class ActionEvaluateCandidate(Action):
 
 
 class ActionAskQuizQ1Answer(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_ask_quiz_q1_answer"
 
     def run(self, dispatcher, tracker, domain):
@@ -669,7 +601,7 @@ class ActionAskQuizQ1Answer(Action):
 
 
 class ActionAskQuizQ2Answer(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_ask_quiz_q2_answer"
 
     def run(self, dispatcher, tracker, domain):
@@ -681,7 +613,7 @@ class ActionAskQuizQ2Answer(Action):
 
 
 class ActionAskQuizQ3Answer(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_ask_quiz_q3_answer"
 
     def run(self, dispatcher, tracker, domain):
@@ -693,7 +625,7 @@ class ActionAskQuizQ3Answer(Action):
 
 
 class ActionAskQuizQ4Answer(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_ask_quiz_q4_answer"
 
     def run(self, dispatcher, tracker, domain):
@@ -705,7 +637,7 @@ class ActionAskQuizQ4Answer(Action):
 
 
 class ActionAskQuizQ5Answer(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_ask_quiz_q5_answer"
 
     def run(self, dispatcher, tracker, domain):
@@ -717,56 +649,46 @@ class ActionAskQuizQ5Answer(Action):
 
 
 class ValidateQuizForm(FormValidationAction):
-    def name(self) -> Text:
+    def name(self):
         return "validate_quiz_form"
 
     def validate_quiz_q1_answer(self, slot_value, dispatcher, tracker, domain):
         if slot_value is None:
             return {}
-        choice = extract_answer_choice(str(slot_value))
-        return {"quiz_q1_answer": choice}
+        return {"quiz_q1_answer": extract_answer_choice(str(slot_value))}
 
     def validate_quiz_q2_answer(self, slot_value, dispatcher, tracker, domain):
         if slot_value is None:
             return {}
-        choice = extract_answer_choice(str(slot_value))
-        return {"quiz_q2_answer": choice}
+        return {"quiz_q2_answer": extract_answer_choice(str(slot_value))}
 
     def validate_quiz_q3_answer(self, slot_value, dispatcher, tracker, domain):
         if slot_value is None:
             return {}
-        choice = extract_answer_choice(str(slot_value))
-        return {"quiz_q3_answer": choice}
+        return {"quiz_q3_answer": extract_answer_choice(str(slot_value))}
 
     def validate_quiz_q4_answer(self, slot_value, dispatcher, tracker, domain):
         if slot_value is None:
             return {}
-        choice = extract_answer_choice(str(slot_value))
-        return {"quiz_q4_answer": choice}
+        return {"quiz_q4_answer": extract_answer_choice(str(slot_value))}
 
     def validate_quiz_q5_answer(self, slot_value, dispatcher, tracker, domain):
         if slot_value is None:
             return {}
-        choice = extract_answer_choice(str(slot_value))
-        return {"quiz_q5_answer": choice}
+        return {"quiz_q5_answer": extract_answer_choice(str(slot_value))}
 
 
 class ActionEvaluateQuiz(Action):
-    def name(self) -> Text:
+    def name(self):
         return "action_evaluate_quiz"
 
-    def run(
-            self,
-            dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any],
-    ) -> List[Dict[Text, Any]]:
+    def run(self, dispatcher, tracker, domain):
         role = tracker.get_slot("quiz_role") or ""
         answers = [tracker.get_slot(f"quiz_q{i}_answer") or "" for i in range(1, 6)]
         questions = QUIZ_QUESTIONS.get(role, [])
 
         correct_count = 0
-        result_lines: List[str] = []
+        result_lines = []
         for i, (ans, q) in enumerate(zip(answers, questions)):
             is_correct = (ans.strip() == q["correct"])
             if is_correct:
@@ -796,7 +718,7 @@ class ActionEvaluateQuiz(Action):
                     + restart_hint
             )
         else:
-            reasons: List[str] = []
+            reasons = []
             if not quiz_passed:
                 reasons.append(f"правильных ответов {correct_count}/{total} (нужно минимум {MIN_CORRECT_ANSWERS})")
             if not exp_passed:
