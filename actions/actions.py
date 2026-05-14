@@ -1,20 +1,40 @@
 import logging
+import os
 import re
 from typing import Any, Dict, List, Text
 
+import yaml
 from rasa_sdk import Action, Tracker
 from rasa_sdk.events import ActiveLoop, SlotSet
 from rasa_sdk.executor import CollectingDispatcher
 from rasa_sdk.forms import FormValidationAction
 
+from .screening_criteria import QUIZ_QUESTIONS, extract_answer_choice
+
 logger = logging.getLogger(__name__)
 
-SKILLS_STUB_CANONICAL = "нет релевантных навыков (заглушка)"
-YEARS_STUB_CANONICAL = "нет опыта по роли (заглушка)"
+
+def _load_screening_config() -> Dict[str, Any]:
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config_path = os.path.join(base, "config.yml")
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return data.get("screening", {})
+    except Exception as exc:
+        logger.warning("Не удалось прочитать config.yml: %s", exc)
+        return {}
+
+
+_SCREENING_CFG = _load_screening_config()
+MIN_CORRECT_ANSWERS: int = int(_SCREENING_CFG.get("min_correct_answers", 3))
+MIN_YEARS_EXPERIENCE: float = float(_SCREENING_CFG.get("min_years_experience", 0))
+
+SKILLS_STUB_CANONICAL = "нет релевантных навыков"
+YEARS_STUB_CANONICAL = "нет опыта по роли"
 
 
 def _format_years_ru(years: float) -> str:
-    """Человекочитаемый стаж для итога (избегаем «~50 г.»)."""
     if years <= 0:
         return "не удалось оценить по ответу"
     if years < 1:
@@ -33,16 +53,14 @@ def _format_years_ru(years: float) -> str:
 
 
 class ActionGreetUser(Action):
-    """Первое приветствие — полный текст; повторные greet — короткий ответ без дублирования блока."""
-
     def name(self) -> Text:
         return "action_greet_user"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Any]:
         text = (tracker.latest_message.get("text") or "").strip()
         if not text:
@@ -58,16 +76,14 @@ class ActionGreetUser(Action):
 
 
 class ActionMarkScreeningStarted(Action):
-    """Ставит флаг, что начался сценарий скрининга (для правил вне формы)."""
-
     def name(self) -> Text:
         return "action_mark_screening_started"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Any]:
         return [SlotSet("screening_form_started", True)]
 
@@ -80,10 +96,8 @@ ROLE_TITLES_RU: Dict[str, str] = {
     "mlops": "MLOps Engineer",
 }
 
-# Явная роль не выбрана — подбор по тексту навыков в action_evaluate_candidate
 ROLE_UNSPECIFIED = "unsure"
 
-# Фразы на шаге «целевая роль» (короткие ответы безопасны: валидатор только для target_role)
 _UNSURE_ROLE_PHRASES = (
     "не знаю какую роль",
     "не знаю какая роль",
@@ -101,7 +115,6 @@ _UNSURE_ROLE_PHRASES = (
     "определите роль по навыкам",
 )
 
-# Ключевые слова по роли — грубая эвристика для учебного MVP
 ROLE_KEYWORDS: Dict[str, List[str]] = {
     "pm": [
         "проект",
@@ -188,23 +201,22 @@ ROLE_KEYWORDS: Dict[str, List[str]] = {
 
 
 def _infer_role_from_free_text(raw: str) -> str | None:
-    """Добавочная эвристика для русских/коротких формулировок (после lookup/синонимов)."""
     if not raw:
         return None
     t = raw.strip().lower().replace("ё", "е")
     if t in ("дата", "data"):
         return None
     if any(
-        x in t
-        for x in (
-            "data scientist",
-            "data science",
-            "датасаент",
-            "дата саент",
-            "дата сайент",
-            "дата сайнт",
-            "дата сатист",
-        )
+            x in t
+            for x in (
+                    "data scientist",
+                    "data science",
+                    "датасаент",
+                    "дата саент",
+                    "дата сайент",
+                    "дата сайнт",
+                    "дата сатист",
+            )
     ):
         return "ds"
     if any(x in t for x in ("data analyst", "аналитик дан", "дата аналит")):
@@ -230,7 +242,6 @@ def _normalize_role(raw: str | None) -> str | None:
         return ROLE_UNSPECIFIED
     if v in ROLE_TITLES_RU:
         return v
-    # частичное извлечение сущности job_role (например только «scientist»)
     if v == "scientist":
         return "ds"
     aliases = {
@@ -298,7 +309,6 @@ def _parse_years(text: str | None) -> float:
 
 
 def _is_years_stub_phrase(t_lower: str) -> bool:
-    """Заглушки/формулировки «без стажа». Не путать с «50 лет» / «20 лет» (подстрока «0 лет»)."""
     t = t_lower.lower().replace("ё", "е")
     if re.search(r"(?<![\d.,])0\s*лет\b", t):
         return True
@@ -354,7 +364,6 @@ def _skills_answer_is_nonsense(raw: str) -> bool:
 
 
 def _looks_like_compensation_not_skills(tl: str) -> bool:
-    """Отсекаем ответы про зарплату/формат на шаге навыков."""
     if tl.strip() in ("обсуждаемо", "обсуждаем", "зарплата обсуждаемо", "не важно", "без разницы"):
         return True
     if "зарплат" in tl and not any(x in tl for x in ("python", "sql", "модел", "ml", "data")):
@@ -363,7 +372,6 @@ def _looks_like_compensation_not_skills(tl: str) -> bool:
 
 
 def _years_phrase_in_skills_step(tl: str) -> bool:
-    """Фразы про стаж не должны попадать в слот навыков."""
     if _is_years_stub_phrase(tl):
         return True
     if "нет опыта" in tl and "навык" not in tl and "стек" not in tl and "python" not in tl:
@@ -379,7 +387,6 @@ def _keyword_hits(role: str, skills: str) -> int:
 
 
 def _infer_best_role_from_skills(skills: str) -> tuple[str | None, Dict[str, int]]:
-    """Если роль не указана — считаем совпадения по всем ролям; при ничьей или нулях возвращаем None."""
     if not skills.strip():
         return None, {}
     hits = {r: _keyword_hits(r, skills) for r in ROLE_KEYWORDS}
@@ -399,7 +406,15 @@ INTERVIEW_SLOTS: tuple[str, ...] = (
     "expectations",
 )
 
-# Защита от ложного intent cancel_interview: отменяем только по явной фразе в тексте.
+QUIZ_SLOTS: tuple[str, ...] = (
+    "quiz_role",
+    "quiz_q1_answer",
+    "quiz_q2_answer",
+    "quiz_q3_answer",
+    "quiz_q4_answer",
+    "quiz_q5_answer",
+)
+
 CANCEL_TEXT_RE = re.compile(
     r"(?is)(?:^|[\s.,;:!?«»\"'\(\[\{])"
     r"(?:отмена\s+интервью|отменить\s+интервью|отмена\s+опроса|отмена\s+скрининга|"
@@ -417,6 +432,8 @@ def _reset_interview_slots() -> List[Any]:
     ]
     for s in INTERVIEW_SLOTS:
         events.append(SlotSet(s, None))
+    for s in QUIZ_SLOTS:
+        events.append(SlotSet(s, None))
     return events
 
 
@@ -427,26 +444,24 @@ class ActionAbortInterviewGoodbye(Action):
         return "action_abort_interview_goodbye"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         dispatcher.utter_message(response="utter_goodbye")
         return _reset_interview_slots()
 
 
 class ActionAbortInterviewCancel(Action):
-    """Явная отмена опроса без прощания (только если в тексте есть явная отмена)."""
-
     def name(self) -> Text:
         return "action_abort_interview_cancel"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         text = (tracker.latest_message.get("text") or "").strip()
         if not CANCEL_TEXT_RE.search(text):
@@ -456,18 +471,21 @@ class ActionAbortInterviewCancel(Action):
 
 
 class ActionClarifyDuringInterview(Action):
-    """Один ответ: остаёмся в форме, подсказка про переформулировку и заглушки."""
-
     def name(self) -> Text:
         return "action_clarify_during_interview"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         rs = tracker.get_slot("requested_slot") or ""
+        if rs and rs.startswith("quiz_q"):
+            q_num = rs.replace("quiz_q", "").replace("_answer", "")
+            tail = f"Сейчас шаг квиза — вопрос {q_num}. Введите цифру 1, 2, 3 или 4. Прервать: «отмена интервью»."
+            dispatcher.utter_message(text=tail)
+            return []
         if rs == "target_role":
             tail = (
                 "Укажите роль: PM, DA, DE, DS или MLOps. Если не выбрали — «не знаю», тогда роль оценим по навыкам. "
@@ -500,11 +518,11 @@ class ValidateInterviewForm(FormValidationAction):
         return "validate_interview_form"
 
     def validate_target_role(
-        self,
-        slot_value: Any,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            slot_value: Any,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> Dict[Text, Any]:
         if slot_value is None:
             return {}
@@ -514,11 +532,11 @@ class ValidateInterviewForm(FormValidationAction):
         return {"target_role": None}
 
     def validate_years_experience(
-        self,
-        slot_value: Any,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            slot_value: Any,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> Dict[Text, Any]:
         if slot_value is None:
             return {}
@@ -529,17 +547,17 @@ class ValidateInterviewForm(FormValidationAction):
         if _years_answer_is_nonsense(raw):
             return {"years_experience": None}
         if _parse_years(raw) <= 0.0 and not any(
-            w in tl for w in ("нет", "без", "ноль")
+                w in tl for w in ("нет", "без", "ноль")
         ):
             return {"years_experience": None}
         return {"years_experience": raw}
 
     def validate_skills_summary(
-        self,
-        slot_value: Any,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            slot_value: Any,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> Dict[Text, Any]:
         if slot_value is None:
             return {}
@@ -556,11 +574,11 @@ class ValidateInterviewForm(FormValidationAction):
         return {"skills_summary": raw}
 
     def validate_expectations(
-        self,
-        slot_value: Any,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            slot_value: Any,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> Dict[Text, Any]:
         if slot_value is None:
             return {}
@@ -576,153 +594,231 @@ class ValidateInterviewForm(FormValidationAction):
 
 
 class ActionEvaluateCandidate(Action):
-    """Оценивает соответствие заявленной роли по опыту и тексту навыков."""
-
     def name(self) -> Text:
         return "action_evaluate_candidate"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         raw_role = tracker.get_slot("target_role")
         years_text = tracker.get_slot("years_experience") or ""
         skills = tracker.get_slot("skills_summary") or ""
-        expectations = tracker.get_slot("expectations") or ""
 
         claimed = _normalize_role(str(raw_role)) if raw_role is not None else None
-        years_lower = years_text.lower()
-        skills_lower = skills.lower()
-        is_years_stub = YEARS_STUB_CANONICAL in years_text or _is_years_stub_phrase(years_lower)
-        is_skills_stub = SKILLS_STUB_CANONICAL in skills or _is_skills_stub_phrase(skills_lower)
-
-        years = _parse_years(years_text)
-
-        reasons: List[str] = []
-        inferred_from_skills = False
         effective_role: str | None = None
 
         if claimed == ROLE_UNSPECIFIED:
-            inferred, _hits_map = _infer_best_role_from_skills(skills)
-            if inferred:
-                effective_role = inferred
-                inferred_from_skills = True
-            else:
-                if not skills.strip() or (not is_skills_stub and len(skills.strip()) < 8):
-                    reasons.append(
-                        "роль не указана явно — чтобы сопоставить вас с одной из пяти позиций по навыкам, "
-                        "нужен более развёрнутый ответ про стек и задачи"
-                    )
-                elif _hits_map and max(_hits_map.values()) == 0:
-                    reasons.append(
-                        "роль не указана явно; по тексту навыков не удалось отнести ни к одной из пяти ролей команды"
-                    )
-                else:
-                    reasons.append(
-                        "роль не указана явно; по навыкам нет однозначного лидера среди пяти ролей "
-                        "(похоже на несколько профилей сразу или ответ слишком общий)"
-                    )
+            inferred, _ = _infer_best_role_from_skills(skills)
+            effective_role = inferred
         else:
             effective_role = claimed
-            if not effective_role:
-                reasons.append("не удалось однозначно сопоставить роль с одной из пяти позиций команды")
 
-        year_ok = years >= 0.5 or is_years_stub
-        if not year_ok:
-            reasons.append("релевантный стаж выглядит слишком коротким для самостоятельной работы в роли")
+        if effective_role not in ROLE_TITLES_RU:
+            dispatcher.utter_message(
+                text=(
+                    "Не удалось однозначно определить роль для квиза.\n"
+                    "Повторите скрининг, указав роль явно: PM, DA, DE, DS или MLOps.\n\n"
+                    "Начать заново: «хочу пройти интервью»."
+                )
+            )
+            reset = [SlotSet(s, None) for s in INTERVIEW_SLOTS]
+            reset += [SlotSet("screening_form_started", False), SlotSet("intro_done", False)]
+            reset += [SlotSet(s, None) for s in QUIZ_SLOTS]
+            return reset
 
-        skill_len_ok = len(skills.strip()) >= 8 or is_skills_stub
-        if not skill_len_ok:
-            reasons.append("описание навыков слишком общее — не видно конкретного стека и задач")
+        role_title = ROLE_TITLES_RU[effective_role]
+        years = _parse_years(years_text)
 
-        if inferred_from_skills:
-            keyword_ok = True
-        elif effective_role:
-            keyword_hits = _keyword_hits(effective_role, skills)
-            keyword_ok = keyword_hits >= 1 or is_skills_stub
-            if not keyword_ok:
+        dispatcher.utter_message(
+            text=(
+                f"Базовая информация принята.\n"
+                f"Роль: {role_title} | Опыт: {_format_years_ru(years)}\n\n"
+                f"Сейчас 5 технических вопросов по роли «{role_title}».\n"
+                f"Отвечайте цифрой: 1, 2, 3 или 4.\n"
+                f"Прервать: «отмена интервью»."
+            )
+        )
+
+        events: List[Any] = [SlotSet(s, None) for s in INTERVIEW_SLOTS]
+        events += [
+            SlotSet("screening_form_started", False),
+            SlotSet("quiz_role", effective_role),
+            SlotSet("quiz_q1_answer", None),
+            SlotSet("quiz_q2_answer", None),
+            SlotSet("quiz_q3_answer", None),
+            SlotSet("quiz_q4_answer", None),
+            SlotSet("quiz_q5_answer", None),
+            ActiveLoop("quiz_form"),
+        ]
+        return events
+
+
+class ActionAskQuizQ1Answer(Action):
+    def name(self) -> Text:
+        return "action_ask_quiz_q1_answer"
+
+    def run(self, dispatcher, tracker, domain):
+        role = tracker.get_slot("quiz_role") or ""
+        qs = QUIZ_QUESTIONS.get(role, [])
+        if qs:
+            dispatcher.utter_message(text=qs[0]["text"])
+        return []
+
+
+class ActionAskQuizQ2Answer(Action):
+    def name(self) -> Text:
+        return "action_ask_quiz_q2_answer"
+
+    def run(self, dispatcher, tracker, domain):
+        role = tracker.get_slot("quiz_role") or ""
+        qs = QUIZ_QUESTIONS.get(role, [])
+        if len(qs) > 1:
+            dispatcher.utter_message(text=qs[1]["text"])
+        return []
+
+
+class ActionAskQuizQ3Answer(Action):
+    def name(self) -> Text:
+        return "action_ask_quiz_q3_answer"
+
+    def run(self, dispatcher, tracker, domain):
+        role = tracker.get_slot("quiz_role") or ""
+        qs = QUIZ_QUESTIONS.get(role, [])
+        if len(qs) > 2:
+            dispatcher.utter_message(text=qs[2]["text"])
+        return []
+
+
+class ActionAskQuizQ4Answer(Action):
+    def name(self) -> Text:
+        return "action_ask_quiz_q4_answer"
+
+    def run(self, dispatcher, tracker, domain):
+        role = tracker.get_slot("quiz_role") or ""
+        qs = QUIZ_QUESTIONS.get(role, [])
+        if len(qs) > 3:
+            dispatcher.utter_message(text=qs[3]["text"])
+        return []
+
+
+class ActionAskQuizQ5Answer(Action):
+    def name(self) -> Text:
+        return "action_ask_quiz_q5_answer"
+
+    def run(self, dispatcher, tracker, domain):
+        role = tracker.get_slot("quiz_role") or ""
+        qs = QUIZ_QUESTIONS.get(role, [])
+        if len(qs) > 4:
+            dispatcher.utter_message(text=qs[4]["text"])
+        return []
+
+
+class ValidateQuizForm(FormValidationAction):
+    def name(self) -> Text:
+        return "validate_quiz_form"
+
+    def validate_quiz_q1_answer(self, slot_value, dispatcher, tracker, domain):
+        if slot_value is None:
+            return {}
+        choice = extract_answer_choice(str(slot_value))
+        return {"quiz_q1_answer": choice}
+
+    def validate_quiz_q2_answer(self, slot_value, dispatcher, tracker, domain):
+        if slot_value is None:
+            return {}
+        choice = extract_answer_choice(str(slot_value))
+        return {"quiz_q2_answer": choice}
+
+    def validate_quiz_q3_answer(self, slot_value, dispatcher, tracker, domain):
+        if slot_value is None:
+            return {}
+        choice = extract_answer_choice(str(slot_value))
+        return {"quiz_q3_answer": choice}
+
+    def validate_quiz_q4_answer(self, slot_value, dispatcher, tracker, domain):
+        if slot_value is None:
+            return {}
+        choice = extract_answer_choice(str(slot_value))
+        return {"quiz_q4_answer": choice}
+
+    def validate_quiz_q5_answer(self, slot_value, dispatcher, tracker, domain):
+        if slot_value is None:
+            return {}
+        choice = extract_answer_choice(str(slot_value))
+        return {"quiz_q5_answer": choice}
+
+
+class ActionEvaluateQuiz(Action):
+    def name(self) -> Text:
+        return "action_evaluate_quiz"
+
+    def run(
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        role = tracker.get_slot("quiz_role") or ""
+        answers = [tracker.get_slot(f"quiz_q{i}_answer") or "" for i in range(1, 6)]
+        questions = QUIZ_QUESTIONS.get(role, [])
+
+        correct_count = 0
+        result_lines: List[str] = []
+        for i, (ans, q) in enumerate(zip(answers, questions)):
+            is_correct = (ans.strip() == q["correct"])
+            if is_correct:
+                correct_count += 1
+            marker = "[+]" if is_correct else "[-]"
+            result_lines.append(
+                f"{marker} Вопрос {i + 1}: ваш ответ — {ans or '?'}, правильный — {q['correct']}"
+            )
+
+        total = len(questions)
+        role_title = ROLE_TITLES_RU.get(role, role)
+        quiz_passed = correct_count >= MIN_CORRECT_ANSWERS
+
+        years_text = tracker.get_slot("years_experience") or ""
+        years = _parse_years(years_text)
+        exp_passed = (MIN_YEARS_EXPERIENCE <= 0) or (years >= MIN_YEARS_EXPERIENCE)
+
+        passed = quiz_passed and exp_passed
+        restart_hint = "\n\nПовторить скрининг: «хочу пройти интервью»."
+
+        if passed:
+            msg = (
+                    f"Итог: вы прошли скрининг на роль «{role_title}»!\n"
+                    f"Правильных ответов: {correct_count}/{total}\n\n"
+                    + "\n".join(result_lines)
+                    + "\n\nРекрутёр свяжется с вами для следующего этапа. Оценка ориентировочная."
+                    + restart_hint
+            )
+        else:
+            reasons: List[str] = []
+            if not quiz_passed:
+                reasons.append(f"правильных ответов {correct_count}/{total} (нужно минимум {MIN_CORRECT_ANSWERS})")
+            if not exp_passed:
                 reasons.append(
-                    f"по тексту навыков слабо прослеживается типичный профиль для роли "
-                    f"«{ROLE_TITLES_RU[effective_role]}»; при смешанном стеке (например, модели и прод) "
-                    f"уточнит рекрутёр"
+                    f"опыт {_format_years_ru(years)} (нужно минимум {_format_years_ru(MIN_YEARS_EXPERIENCE)})"
                 )
-        else:
-            keyword_ok = False
-
-        if is_years_stub:
-            reasons.append("по опыту указана заглушка вместо конкретного стажа")
-        if is_skills_stub:
-            reasons.append("по навыкам указана заглушка вместо стека и задач")
-
-        both_stubs = is_years_stub and is_skills_stub
-        fit = (
-            effective_role is not None
-            and year_ok
-            and skill_len_ok
-            and keyword_ok
-            and not both_stubs
-        )
-
-        role_title = ROLE_TITLES_RU[effective_role] if effective_role else None
-
-        if both_stubs:
-            fit = False
-            reasons = [
-                "одновременно выбраны заглушки по опыту и по навыкам — для скрининга нужен "
-                "хотя бы один содержательный ответ (стаж или стек/задачи)"
-            ]
-
-        restart_hint = (
-            "\n\nСнова пройти скрининг: «хочу пройти интервью» или /restart в rasa shell."
-        )
-
-        if fit and role_title:
-            unsure_lead = ""
-            if inferred_from_skills:
-                unsure_lead = (
-                    "Роль вы не указали — совпадение с позицией по **навыкам** (эвристика). "
-                    "Если неверно, начните заново и назовите роль явно.\n\n"
-                )
-            exp_line = expectations.strip() or "—"
             msg = (
-                f"Итог: предварительно вы **подходите** на роль **{role_title}**.\n"
-                f"{unsure_lead}"
-                f"Опыт по ответу: {_format_years_ru(years)}.\n"
-                f"Ожидания: {exp_line}\n\n"
-                "Рекрутёр может связаться для следующего этапа. "
-                "Оценка автоматическая и ориентировочная."
-                f"{restart_hint}"
-            )
-        else:
-            role_line = (
-                f"для роли «{role_title}»"
-                if role_title
-                else "для заявленной позиции в ML-команде"
-            )
-            uniq: List[str] = []
-            for r in reasons:
-                if r not in uniq:
-                    uniq.append(r)
-            if not uniq:
-                uniq.append("недостаточно данных для положительного заключения")
-            msg = (
-                "Итог: по ответам **не проходите** порог первичного соответствия "
-                f"{role_line}.\n\n"
-                "Почему:\n• " + "\n• ".join(uniq)
-                + "\n\n"
-                "Напишите конкретнее или используйте заглушки только там, где правда нечего добавить."
-                f"{restart_hint}"
+                    f"Итог: вы НЕ прошли порог скрининга на роль «{role_title}».\n"
+                    f"Причина: {'; '.join(reasons)}.\n\n"
+                    + "\n".join(result_lines)
+                    + "\n\nПопробуйте ещё раз или подготовьтесь по материалам роли."
+                    + restart_hint
             )
 
         dispatcher.utter_message(text=msg)
 
         return [
-            SlotSet("target_role", None),
-            SlotSet("years_experience", None),
-            SlotSet("skills_summary", None),
-            SlotSet("expectations", None),
-            SlotSet("screening_form_started", False),
+            SlotSet("quiz_role", None),
+            SlotSet("quiz_q1_answer", None),
+            SlotSet("quiz_q2_answer", None),
+            SlotSet("quiz_q3_answer", None),
+            SlotSet("quiz_q4_answer", None),
+            SlotSet("quiz_q5_answer", None),
             SlotSet("intro_done", False),
         ]

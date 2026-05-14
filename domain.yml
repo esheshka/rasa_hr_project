@@ -14,7 +14,6 @@ entities:
   - job_role
 
 slots:
-  # True пока идёт или только что шла анкета — чтобы не путать «Data Scientist» до старта с ответом в форме.
   screening_form_started:
     type: bool
     influence_conversation: true
@@ -22,7 +21,6 @@ slots:
     mappings:
       - type: custom
 
-  # После первого полного приветствия — короткий ответ на повторные greet / «рш» (раскладка)
   intro_done:
     type: bool
     influence_conversation: true
@@ -34,7 +32,6 @@ slots:
     type: text
     influence_conversation: true
     mappings:
-      # Сначала полный текст (иначе DIET может выдать job_role="scientist" по span «scientist»).
       - type: from_text
         not_intent:
           - out_of_scope
@@ -100,6 +97,97 @@ slots:
           - active_loop: interview_form
             requested_slot: expectations
 
+  quiz_role:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: custom
+
+  quiz_q1_answer:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: quiz_form
+            requested_slot: quiz_q1_answer
+
+  quiz_q2_answer:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: quiz_form
+            requested_slot: quiz_q2_answer
+
+  quiz_q3_answer:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: quiz_form
+            requested_slot: quiz_q3_answer
+
+  quiz_q4_answer:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: quiz_form
+            requested_slot: quiz_q4_answer
+
+  quiz_q5_answer:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_text
+        not_intent:
+          - out_of_scope
+          - goodbye
+          - cancel_interview
+          - greet
+          - ask_roles
+          - start_interview
+          - nlu_fallback
+        conditions:
+          - active_loop: quiz_form
+            requested_slot: quiz_q5_answer
+
 responses:
   utter_greet_full:
     - text: |
@@ -114,7 +202,6 @@ responses:
   utter_out_of_scope:
     - text: "Здесь только скрининг на роли ML-команды. Напишите «хочу пройти интервью» или «какие роли есть» — по делу отвечу."
 
-  # Ответ при низкой уверенности NLU (см. RulePolicy core_fallback → action_default_fallback)
   utter_default:
     - text: "Не разобрал запрос. Попробуйте: «хочу пройти интервью» или «какие роли есть»."
 
@@ -165,6 +252,14 @@ forms:
       - skills_summary
       - expectations
 
+  quiz_form:
+    required_slots:
+      - quiz_q1_answer
+      - quiz_q2_answer
+      - quiz_q3_answer
+      - quiz_q4_answer
+      - quiz_q5_answer
+
 actions:
   - validate_interview_form
   - action_greet_user
@@ -173,6 +268,13 @@ actions:
   - action_abort_interview_cancel
   - action_evaluate_candidate
   - action_abort_interview_goodbye
+  - validate_quiz_form
+  - action_ask_quiz_q1_answer
+  - action_ask_quiz_q2_answer
+  - action_ask_quiz_q3_answer
+  - action_ask_quiz_q4_answer
+  - action_ask_quiz_q5_answer
+  - action_evaluate_quiz
 
 session_config:
   session_expiration_time: 60

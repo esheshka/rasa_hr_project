@@ -20,13 +20,12 @@ pipeline:
     ambiguity_threshold: 0.1
 
 policies:
-  # Диалог только из RulePolicy + формы (без TED и без MemoizationPolicy):
-  # MemoizationPolicy по минимальной story мог «ломать» active_loop и приводить
-  # к utter_default / action_default_fallback вместо продолжения формы.
   - name: RulePolicy
-    # action_default_fallback один раз подсказывает и переводит диалог в listen;
-    # utter_out_of_scope как core_fallback даёт зацикливание в одном user-turn.
     core_fallback_threshold: 0.4
     core_fallback_action_name: action_default_fallback
 
 assistant_id: 20260510-hr-ml-team-screening
+
+screening:
+  min_correct_answers: 3
+  min_years_experience: 0
