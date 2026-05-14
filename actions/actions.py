@@ -1,7 +1,9 @@
 import logging
+import os
 import re
 from typing import Any, Dict, List, Text
 
+import yaml
 from rasa_sdk import Action, Tracker
 from rasa_sdk.events import ActiveLoop, SlotSet
 from rasa_sdk.executor import CollectingDispatcher
@@ -10,6 +12,24 @@ from rasa_sdk.forms import FormValidationAction
 from .screening_criteria import QUIZ_QUESTIONS, extract_answer_choice
 
 logger = logging.getLogger(__name__)
+
+
+def _load_screening_config() -> Dict[str, Any]:
+    """Читает секцию screening из config.yml рядом с корнем проекта."""
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config_path = os.path.join(base, "config.yml")
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return data.get("screening", {})
+    except Exception as exc:
+        logger.warning("Не удалось прочитать config.yml: %s", exc)
+        return {}
+
+
+_SCREENING_CFG = _load_screening_config()
+MIN_CORRECT_ANSWERS: int = int(_SCREENING_CFG.get("min_correct_answers", 3))
+MIN_YEARS_EXPERIENCE: float = float(_SCREENING_CFG.get("min_years_experience", 0))
 
 SKILLS_STUB_CANONICAL = "нет релевантных навыков (заглушка)"
 YEARS_STUB_CANONICAL = "нет опыта по роли (заглушка)"
@@ -754,7 +774,7 @@ class ValidateQuizForm(FormValidationAction):
 
 
 class ActionEvaluateQuiz(Action):
-    """Подсчитывает правильные ответы и выносит вердикт: проходит если >= 3/5."""
+    """Подсчитывает правильные ответы и выносит вердикт по порогам из config.yml."""
 
     def name(self) -> Text:
         return "action_evaluate_quiz"
@@ -780,22 +800,36 @@ class ActionEvaluateQuiz(Action):
                 f"{marker} Вопрос {i + 1}: ваш ответ — {ans or '?'}, правильный — {q['correct']}"
             )
 
+        total = len(questions)
         role_title = ROLE_TITLES_RU.get(role, role)
-        passed = correct_count >= 3
+        quiz_passed = correct_count >= MIN_CORRECT_ANSWERS
+
+        years_text = tracker.get_slot("years_experience") or ""
+        years = _parse_years(years_text)
+        exp_passed = (MIN_YEARS_EXPERIENCE <= 0) or (years >= MIN_YEARS_EXPERIENCE)
+
+        passed = quiz_passed and exp_passed
         restart_hint = "\n\nПовторить скрининг: «хочу пройти интервью»."
 
         if passed:
             msg = (
                 f"Итог: вы ПРОШЛИ скрининг на роль «{role_title}»!\n"
-                f"Правильных ответов: {correct_count}/5\n\n"
+                f"Правильных ответов: {correct_count}/{total}\n\n"
                 + "\n".join(result_lines)
                 + "\n\nРекрутёр свяжется с вами для следующего этапа. Оценка ориентировочная."
                 + restart_hint
             )
         else:
+            reasons: List[str] = []
+            if not quiz_passed:
+                reasons.append(f"правильных ответов {correct_count}/{total} (нужно минимум {MIN_CORRECT_ANSWERS})")
+            if not exp_passed:
+                reasons.append(
+                    f"опыт {_format_years_ru(years)} (нужно минимум {_format_years_ru(MIN_YEARS_EXPERIENCE)})"
+                )
             msg = (
                 f"Итог: вы НЕ ПРОШЛИ порог скрининга на роль «{role_title}».\n"
-                f"Правильных ответов: {correct_count}/5 (нужно минимум 3)\n\n"
+                f"Причина: {'; '.join(reasons)}.\n\n"
                 + "\n".join(result_lines)
                 + "\n\nПопробуйте ещё раз или подготовьтесь по материалам роли."
                 + restart_hint

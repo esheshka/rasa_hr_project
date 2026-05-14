@@ -30,3 +30,8 @@ policies:
     core_fallback_action_name: action_default_fallback
 
 assistant_id: 20260510-hr-ml-team-screening
+
+# Параметры скрининга — читаются actions/actions.py при старте сервера
+screening:
+  min_correct_answers: 3   # минимум правильных ответов в квизе (из 5)
+  min_years_experience: 0  # минимальный стаж в годах (0 = не проверяем)
