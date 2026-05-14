@@ -14,7 +14,6 @@ entities:
   - job_role
 
 slots:
-  # True пока идёт или только что шла анкета — чтобы не путать «Data Scientist» до старта с ответом в форме.
   screening_form_started:
     type: bool
     influence_conversation: true
@@ -22,7 +21,6 @@ slots:
     mappings:
       - type: custom
 
-  # После первого полного приветствия — короткий ответ на повторные greet / «рш» (раскладка)
   intro_done:
     type: bool
     influence_conversation: true
@@ -34,7 +32,6 @@ slots:
     type: text
     influence_conversation: true
     mappings:
-      # Сначала полный текст (иначе DIET может выдать job_role="scientist" по span «scientist»).
       - type: from_text
         not_intent:
           - out_of_scope
@@ -205,7 +202,6 @@ responses:
   utter_out_of_scope:
     - text: "Здесь только скрининг на роли ML-команды. Напишите «хочу пройти интервью» или «какие роли есть» — по делу отвечу."
 
-  # Ответ при низкой уверенности NLU (см. RulePolicy core_fallback → action_default_fallback)
   utter_default:
     - text: "Не разобрал запрос. Попробуйте: «хочу пройти интервью» или «какие роли есть»."
 

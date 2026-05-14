@@ -291,6 +291,5 @@ QUIZ_QUESTIONS: Dict[str, List[Dict]] = {
 
 
 def extract_answer_choice(text: str) -> Optional[str]:
-    """Extracts answer choice digit (1-4) from user text."""
     m = re.search(r"\b([1-4])\b", text)
     return m.group(1) if m else None

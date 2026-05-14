@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-E2E-прогон через REST webhook (нужны: rasa run --enable-api -p 5006 и rasa run actions -p 5055).
-Запуск: python scripts/e2e_dialog.py
-"""
 from __future__ import annotations
 
 import json
@@ -247,9 +243,9 @@ def main() -> int:
             return False, "пустой ответ"
         tl = t.lower()
         ok = (
-            "шаг" in tl
-            and "роль" in tl
-        ) or "прервать" in tl
+                     "шаг" in tl
+                     and "роль" in tl
+             ) or "прервать" in tl
         if not ok:
             return False, f"ожидали подсказку внутри формы, получили: {t[:300]}"
         return True, "остались в форме"

@@ -1,10 +1,6 @@
 version: "3.1"
 
-# Минимальная сторя для валидатора (intent inform используется внутри формы).
-# Диалоговая политика — только RulePolicy без TED и без MemoizationPolicy (см. config.yml).
-
 stories:
-
   - story: Форма принимает inform
     steps:
       - intent: start_interview

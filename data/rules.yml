@@ -1,10 +1,6 @@
 version: "3.1"
 
-# Важно: правила с active_loop: interview_form должны идти РАНЬШЕ общих
-# goodbye / out_of_scope — иначе форма не снимется и сработает action_execution_rejected + fallback.
-
 rules:
-
   - rule: Приветствие
     steps:
       - intent: greet
@@ -62,8 +58,6 @@ rules:
       - intent: out_of_scope
       - action: action_clarify_during_interview
 
-  # Явное продолжение формы по inform (иначе при только RulePolicy без TED
-  # иногда не выбирается interview_form → срабатывает core_fallback / utter_default).
   - rule: Форма — ответ inform, продолжить опрос
     condition:
       - active_loop: interview_form
@@ -82,7 +76,6 @@ rules:
       - intent: out_of_scope
       - action: utter_out_of_scope
 
-  # Иначе срабатывает utter_default и одновременно переспрос формы — два сообщения подряд.
   - rule: NLU fallback во время формы — только переспрос текущего поля
     condition:
       - active_loop: interview_form

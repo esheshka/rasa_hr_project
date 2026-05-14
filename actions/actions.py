@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 def _load_screening_config() -> Dict[str, Any]:
-    """Читает секцию screening из config.yml рядом с корнем проекта."""
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     config_path = os.path.join(base, "config.yml")
     try:
@@ -31,12 +30,11 @@ _SCREENING_CFG = _load_screening_config()
 MIN_CORRECT_ANSWERS: int = int(_SCREENING_CFG.get("min_correct_answers", 3))
 MIN_YEARS_EXPERIENCE: float = float(_SCREENING_CFG.get("min_years_experience", 0))
 
-SKILLS_STUB_CANONICAL = "нет релевантных навыков (заглушка)"
-YEARS_STUB_CANONICAL = "нет опыта по роли (заглушка)"
+SKILLS_STUB_CANONICAL = "нет релевантных навыков"
+YEARS_STUB_CANONICAL = "нет опыта по роли"
 
 
 def _format_years_ru(years: float) -> str:
-    """Человекочитаемый стаж для итога (избегаем «~50 г.»)."""
     if years <= 0:
         return "не удалось оценить по ответу"
     if years < 1:
@@ -55,16 +53,14 @@ def _format_years_ru(years: float) -> str:
 
 
 class ActionGreetUser(Action):
-    """Первое приветствие — полный текст; повторные greet — короткий ответ без дублирования блока."""
-
     def name(self) -> Text:
         return "action_greet_user"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Any]:
         text = (tracker.latest_message.get("text") or "").strip()
         if not text:
@@ -80,16 +76,14 @@ class ActionGreetUser(Action):
 
 
 class ActionMarkScreeningStarted(Action):
-    """Ставит флаг, что начался сценарий скрининга (для правил вне формы)."""
-
     def name(self) -> Text:
         return "action_mark_screening_started"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Any]:
         return [SlotSet("screening_form_started", True)]
 
@@ -102,10 +96,8 @@ ROLE_TITLES_RU: Dict[str, str] = {
     "mlops": "MLOps Engineer",
 }
 
-# Явная роль не выбрана — подбор по тексту навыков в action_evaluate_candidate
 ROLE_UNSPECIFIED = "unsure"
 
-# Фразы на шаге «целевая роль» (короткие ответы безопасны: валидатор только для target_role)
 _UNSURE_ROLE_PHRASES = (
     "не знаю какую роль",
     "не знаю какая роль",
@@ -123,7 +115,6 @@ _UNSURE_ROLE_PHRASES = (
     "определите роль по навыкам",
 )
 
-# Ключевые слова по роли — грубая эвристика для учебного MVP
 ROLE_KEYWORDS: Dict[str, List[str]] = {
     "pm": [
         "проект",
@@ -210,23 +201,22 @@ ROLE_KEYWORDS: Dict[str, List[str]] = {
 
 
 def _infer_role_from_free_text(raw: str) -> str | None:
-    """Добавочная эвристика для русских/коротких формулировок (после lookup/синонимов)."""
     if not raw:
         return None
     t = raw.strip().lower().replace("ё", "е")
     if t in ("дата", "data"):
         return None
     if any(
-        x in t
-        for x in (
-            "data scientist",
-            "data science",
-            "датасаент",
-            "дата саент",
-            "дата сайент",
-            "дата сайнт",
-            "дата сатист",
-        )
+            x in t
+            for x in (
+                    "data scientist",
+                    "data science",
+                    "датасаент",
+                    "дата саент",
+                    "дата сайент",
+                    "дата сайнт",
+                    "дата сатист",
+            )
     ):
         return "ds"
     if any(x in t for x in ("data analyst", "аналитик дан", "дата аналит")):
@@ -252,7 +242,6 @@ def _normalize_role(raw: str | None) -> str | None:
         return ROLE_UNSPECIFIED
     if v in ROLE_TITLES_RU:
         return v
-    # частичное извлечение сущности job_role (например только «scientist»)
     if v == "scientist":
         return "ds"
     aliases = {
@@ -320,7 +309,6 @@ def _parse_years(text: str | None) -> float:
 
 
 def _is_years_stub_phrase(t_lower: str) -> bool:
-    """Заглушки/формулировки «без стажа». Не путать с «50 лет» / «20 лет» (подстрока «0 лет»)."""
     t = t_lower.lower().replace("ё", "е")
     if re.search(r"(?<![\d.,])0\s*лет\b", t):
         return True
@@ -376,7 +364,6 @@ def _skills_answer_is_nonsense(raw: str) -> bool:
 
 
 def _looks_like_compensation_not_skills(tl: str) -> bool:
-    """Отсекаем ответы про зарплату/формат на шаге навыков."""
     if tl.strip() in ("обсуждаемо", "обсуждаем", "зарплата обсуждаемо", "не важно", "без разницы"):
         return True
     if "зарплат" in tl and not any(x in tl for x in ("python", "sql", "модел", "ml", "data")):
@@ -385,7 +372,6 @@ def _looks_like_compensation_not_skills(tl: str) -> bool:
 
 
 def _years_phrase_in_skills_step(tl: str) -> bool:
-    """Фразы про стаж не должны попадать в слот навыков."""
     if _is_years_stub_phrase(tl):
         return True
     if "нет опыта" in tl and "навык" not in tl and "стек" not in tl and "python" not in tl:
@@ -401,7 +387,6 @@ def _keyword_hits(role: str, skills: str) -> int:
 
 
 def _infer_best_role_from_skills(skills: str) -> tuple[str | None, Dict[str, int]]:
-    """Если роль не указана — считаем совпадения по всем ролям; при ничьей или нулях возвращаем None."""
     if not skills.strip():
         return None, {}
     hits = {r: _keyword_hits(r, skills) for r in ROLE_KEYWORDS}
@@ -430,7 +415,6 @@ QUIZ_SLOTS: tuple[str, ...] = (
     "quiz_q5_answer",
 )
 
-# Защита от ложного intent cancel_interview: отменяем только по явной фразе в тексте.
 CANCEL_TEXT_RE = re.compile(
     r"(?is)(?:^|[\s.,;:!?«»\"'\(\[\{])"
     r"(?:отмена\s+интервью|отменить\s+интервью|отмена\s+опроса|отмена\s+скрининга|"
@@ -460,26 +444,24 @@ class ActionAbortInterviewGoodbye(Action):
         return "action_abort_interview_goodbye"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         dispatcher.utter_message(response="utter_goodbye")
         return _reset_interview_slots()
 
 
 class ActionAbortInterviewCancel(Action):
-    """Явная отмена опроса без прощания (только если в тексте есть явная отмена)."""
-
     def name(self) -> Text:
         return "action_abort_interview_cancel"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         text = (tracker.latest_message.get("text") or "").strip()
         if not CANCEL_TEXT_RE.search(text):
@@ -489,16 +471,14 @@ class ActionAbortInterviewCancel(Action):
 
 
 class ActionClarifyDuringInterview(Action):
-    """Один ответ: остаёмся в форме, подсказка про переформулировку и заглушки."""
-
     def name(self) -> Text:
         return "action_clarify_during_interview"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         rs = tracker.get_slot("requested_slot") or ""
         if rs and rs.startswith("quiz_q"):
@@ -538,11 +518,11 @@ class ValidateInterviewForm(FormValidationAction):
         return "validate_interview_form"
 
     def validate_target_role(
-        self,
-        slot_value: Any,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            slot_value: Any,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> Dict[Text, Any]:
         if slot_value is None:
             return {}
@@ -552,11 +532,11 @@ class ValidateInterviewForm(FormValidationAction):
         return {"target_role": None}
 
     def validate_years_experience(
-        self,
-        slot_value: Any,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            slot_value: Any,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> Dict[Text, Any]:
         if slot_value is None:
             return {}
@@ -567,17 +547,17 @@ class ValidateInterviewForm(FormValidationAction):
         if _years_answer_is_nonsense(raw):
             return {"years_experience": None}
         if _parse_years(raw) <= 0.0 and not any(
-            w in tl for w in ("нет", "без", "ноль")
+                w in tl for w in ("нет", "без", "ноль")
         ):
             return {"years_experience": None}
         return {"years_experience": raw}
 
     def validate_skills_summary(
-        self,
-        slot_value: Any,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            slot_value: Any,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> Dict[Text, Any]:
         if slot_value is None:
             return {}
@@ -594,11 +574,11 @@ class ValidateInterviewForm(FormValidationAction):
         return {"skills_summary": raw}
 
     def validate_expectations(
-        self,
-        slot_value: Any,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            slot_value: Any,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> Dict[Text, Any]:
         if slot_value is None:
             return {}
@@ -614,16 +594,14 @@ class ValidateInterviewForm(FormValidationAction):
 
 
 class ActionEvaluateCandidate(Action):
-    """Определяет роль, выводит сводку и активирует quiz_form."""
-
     def name(self) -> Text:
         return "action_evaluate_candidate"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         raw_role = tracker.get_slot("target_role")
         years_text = tracker.get_slot("years_experience") or ""
@@ -774,16 +752,14 @@ class ValidateQuizForm(FormValidationAction):
 
 
 class ActionEvaluateQuiz(Action):
-    """Подсчитывает правильные ответы и выносит вердикт по порогам из config.yml."""
-
     def name(self) -> Text:
         return "action_evaluate_quiz"
 
     def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
+            self,
+            dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         role = tracker.get_slot("quiz_role") or ""
         answers = [tracker.get_slot(f"quiz_q{i}_answer") or "" for i in range(1, 6)]
@@ -813,11 +789,11 @@ class ActionEvaluateQuiz(Action):
 
         if passed:
             msg = (
-                f"Итог: вы ПРОШЛИ скрининг на роль «{role_title}»!\n"
-                f"Правильных ответов: {correct_count}/{total}\n\n"
-                + "\n".join(result_lines)
-                + "\n\nРекрутёр свяжется с вами для следующего этапа. Оценка ориентировочная."
-                + restart_hint
+                    f"Итог: вы прошли скрининг на роль «{role_title}»!\n"
+                    f"Правильных ответов: {correct_count}/{total}\n\n"
+                    + "\n".join(result_lines)
+                    + "\n\nРекрутёр свяжется с вами для следующего этапа. Оценка ориентировочная."
+                    + restart_hint
             )
         else:
             reasons: List[str] = []
@@ -828,11 +804,11 @@ class ActionEvaluateQuiz(Action):
                     f"опыт {_format_years_ru(years)} (нужно минимум {_format_years_ru(MIN_YEARS_EXPERIENCE)})"
                 )
             msg = (
-                f"Итог: вы НЕ ПРОШЛИ порог скрининга на роль «{role_title}».\n"
-                f"Причина: {'; '.join(reasons)}.\n\n"
-                + "\n".join(result_lines)
-                + "\n\nПопробуйте ещё раз или подготовьтесь по материалам роли."
-                + restart_hint
+                    f"Итог: вы НЕ прошли порог скрининга на роль «{role_title}».\n"
+                    f"Причина: {'; '.join(reasons)}.\n\n"
+                    + "\n".join(result_lines)
+                    + "\n\nПопробуйте ещё раз или подготовьтесь по материалам роли."
+                    + restart_hint
             )
 
         dispatcher.utter_message(text=msg)
